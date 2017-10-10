@@ -1,0 +1,104 @@
+http://blog.csdn.net/lizhengwei1989/article/details/73380589
+
+Android开发中难免会用到WebView来展示一些页面，这就少不了需要和原生的一些交互。例如一些web页面中需要判断用户是否登录、获取用户的信息等，如果app本身已经有这些信息，web就可以通过与native交互就可以拿到这些信息。
+根据实现方式的不同，这里总结三种不同的交互方式，网上的其他实现方式原理上几乎也都万变不离其宗。
+三种方式分别为：
+
+1.  拦截prompt提示框方式
+2.  拦截url跳转方式
+3.  Android原生交互方式
+
+单看这三个总结肯定是看不懂的，下面来看代码：
+首先是HTML：
+
+<html>
+<head>
+  <title>JS交互</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+  <script type="text/javascript">
+    function promptTest(param){
+        prompt(param);
+    }
+  </script>
+</head>
+<body>
+  <p id="content"></p>
+  <p>
+  <input type="button" value="调用Java方法" onclick="window.stub.jsMethod('传统方式的参数');" /><br />
+  <hr />
+  <input type="button" value="prompt方式" onclick="promptTest('prompt方式的参数')" /><br />
+  <hr />
+  <a href="http://www.xxx.com">链接方式</a>
+  </p>
+</body>
+</html>
+Activity的代码：
+
+public class MainActivity extends AppCompatActivity {
+
+    private WebView webview;
+    private TextView tv;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        webview = (WebView) findViewById(R.id.webview);
+        tv = (TextView) findViewById(R.id.params);
+
+        WebSettings webSettings = webview.getSettings();
+        webSettings.setJavaScriptEnabled(true); // 启用JavaScript
+        //允许弹出框
+        webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+        webview.loadUrl("file:///android_asset/js.html");
+
+        // 原生方式，注册交互的类
+        webview.addJavascriptInterface(new JsToJava(), "stub");
+
+        // Js的Prompt实际上就是一个确定弹出框，Android上一般用不上这个功能
+        // 我们直接把弹出框这个功能拿来用做交互，当需要交互的时候，就把交互参数作为弹出框内容，然后在Android中拦截了就行了
+        // 如果你对HTML不熟悉，就告诉你们的前段：就是js的prompt方法，然后把上面的html给他看看他肯定就知道怎么写了
+        // 这种方式我个人不太喜欢，毕竟把JsPromot给占用了，心里不爽...
+        webview.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+                // 这里拿到参数就可以根据约定好的格式解析了
+                tv.setText("prompt方式，参数：" + message);
+                // 调用一下cancel或者confirm都行，就是模拟手动点击了确定或者取消按钮
+                result.cancel();
+                return true;
+            }
+        });
+        webview.setWebViewClient(new WebViewClient(){
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // 超链接的方式
+                // WebView中任何跳转都会走这个方法，我们在这里进行判断，如果是我们约定好的连接，就进行自己的操作，否则就放行
+                tv.setText("url方式交互，url是：" + url);
+                return true; // 拦截了，如果不拦截就是 view.loadUrl(url)
+            }
+        });
+    }
+
+    // 原生的方式
+    private class JsToJava {
+        // 高版本需要加这个注解才能生效
+        @JavascriptInterface
+        public void jsMethod(final String paramFromJS) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    tv.setText("传统方式js调用java，参数：" + paramFromJS);
+                }
+            });
+        }
+    }
+}
+
+
+上面说的都是web调用java，java调用web中的js很简单：
+
+myWebView.loadUrl("javascript:myFunction()");
+// myFunction()换成你自己的方法就行了
